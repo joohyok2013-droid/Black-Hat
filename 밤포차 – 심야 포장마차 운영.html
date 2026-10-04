@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>밤포차 – 심야 포장마차 운영</title>
+<link href="https://fonts.googleapis.com/css2?family=Black+Han+Sans&family=Gowun+Dodum&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#161a33;--pot:#262b50;--pot2:#31376a;--tarp:#e8772e;--cream:#f6e7c8;--bulb:#ffd36b;--ink:#fff4de;--dim:#a9aed0;--bad:#ff6b5e;--ok:#8fd694;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.5 'Gowun Dodum',system-ui,sans-serif;min-height:100vh}
+.tarp{height:34px;background:repeating-linear-gradient(90deg,var(--tarp) 0 38px,var(--cream) 38px 76px);border-radius:0 0 50% 50%/0 0 20px 20px;box-shadow:0 6px 18px #0006}
+.wrap{max-width:860px;margin:0 auto;padding:16px}
+header{display:flex;justify-content:space-between;align-items:baseline;gap:12px;flex-wrap:wrap;margin:10px 0 14px}
+h1{font:400 28px 'Black Han Sans',sans-serif;margin:0;color:var(--bulb);letter-spacing:.02em}
+.stat{display:flex;gap:18px;font-size:17px}
+.stat b{color:var(--bulb);font-variant-numeric:tabular-nums}
+.seats{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
+.seat{background:var(--pot);border:2px solid var(--pot2);border-radius:14px;min-height:150px;padding:10px;text-align:center;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:6px}
+.seat.empty{border-style:dashed;background:transparent;color:var(--dim);justify-content:center;cursor:default}
+.seat:not(.empty):hover{border-color:var(--bulb)}
+.face{font-size:38px;line-height:1}
+.need{display:flex;gap:4px;flex-wrap:wrap;justify-content:center}
+.need span{background:var(--cream);color:#3a2410;border-radius:999px;padding:1px 9px;font-size:15px}
+.bar{width:100%;height:7px;background:#0005;border-radius:4px;overflow:hidden;margin-top:auto}
+.bar i{display:block;height:100%;width:100%;background:var(--ok)}
+h2{font:400 18px 'Black Han Sans',sans-serif;margin:20px 0 8px;color:var(--cream)}
+.menu{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
+.dish{background:var(--pot2);color:var(--ink);border:0;border-radius:14px;padding:12px 8px;font:inherit;cursor:pointer;text-align:center;position:relative;overflow:hidden}
+.dish:hover{background:#3b4284}
+.dish:focus-visible,.seat:focus-visible,button:focus-visible{outline:3px solid var(--bulb);outline-offset:2px}
+.dish .e{font-size:32px;display:block}
+.dish small{display:block;color:var(--dim)}
+.dish .rdy{position:absolute;top:6px;right:8px;background:var(--bulb);color:#3a2410;border-radius:999px;min-width:24px;padding:0 7px;font-weight:700}
+.dish .cb{position:absolute;left:0;bottom:0;height:5px;background:var(--tarp);width:0}
+#log{margin-top:16px;min-height:26px;color:var(--dim)}
+#ov{position:fixed;inset:0;background:#0009;display:flex;align-items:center;justify-content:center;padding:16px;z-index:5}
+#ov[hidden]{display:none}
+.card{background:var(--pot);border:2px solid var(--bulb);border-radius:18px;max-width:420px;width:100%;padding:22px}
+.card h3{font:400 24px 'Black Han Sans',sans-serif;color:var(--bulb);margin:0 0 8px}
+.card p{margin:6px 0}
+.card button{display:block;width:100%;margin-top:10px;padding:11px;border:0;border-radius:10px;font:inherit;font-weight:700;cursor:pointer;background:var(--tarp);color:#2a1305}
+.card button.alt{background:var(--pot2);color:var(--ink)}
+.card button:disabled{opacity:.4;cursor:not-allowed}
+@media(max-width:620px){.seats,.menu{grid-template-columns:repeat(2,1fr)}}
+@media(prefers-reduced-motion:no-preference){.seat:not(.empty){transition:border-color .15s}}
+</style>
+</head>
+<body>
+<div class="tarp"></div>
+<div class="wrap">
+<header><h1>🏮 밤포차</h1>
+<div class="stat"><span><b id="day">1</b>일차</span><span><b id="clk">20:00</b></span><span><b id="money">0</b>원</span></div></header>
+<div class="seats" id="seats"></div>
+<h2>메뉴 (눌러서 조리 → 손님을 눌러서 서빙)</h2>
+<div class="menu" id="menu"></div>
+<div id="log"></div>
+</div>
+<div id="ov"><div class="card" id="card"></div></div>
+<script>
+const M=[{n:'어묵탕',e:'🍢',p:3000,c:800,t:3},{n:'떡볶이',e:'🌶️',p:5000,c:1500,t:5},{n:'닭꼬치',e:'🍗',p:4000,c:1200,t:4},{n:'소주',e:'🍶',p:4000,c:1000,t:1.5}];
+const FACE=['🧑‍💼','👩‍🎤','🧓','👨‍🎓','👷','🧑‍🎨'];
+const RENT=6000;
+let S={day:1,money:30000,fire:0,sign:0},G=null,timer=null;
+const $=s=>document.querySelector(s);
+const won=n=>n.toLocaleString('ko-KR');
+const pad=n=>String(n).padStart(2,'0');
+const hour=()=>((20*60+G.t/G.len*540)%1440)/60;
+function log(t){$('#log').textContent=t}
+
+function buildUI(){
+  $('#seats').innerHTML='';
+  for(let i=0;i<4;i++){const d=document.createElement('div');d.className='seat empty';d.tabIndex=0;d.onclick=()=>serve(i);d.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();serve(i)}};d.innerHTML='빈 자리';$('#seats').appendChild(d)}
+  $('#menu').innerHTML='';
+  M.forEach((m,i)=>{const b=document.createElement('button');b.className='dish';b.innerHTML=`<span class="rdy" id="r${i}">0</span><span class="e">${m.e}</span>${m.n}<small>${won(m.p)}원 · 재료 ${won(m.c)}원</small><div class="cb" id="c${i}"></div>`;b.onclick=()=>order(i);$('#menu').appendChild(b)});
+}
+
+function startNight(){
+  G={t:0,len:180,seats:[null,null,null,null],cook:M.map(()=>0),ready:M.map(()=>0),next:1.5,rev:0,cost:0,served:0,lost:0,id:0};
+  $('#ov').hidden=true;buildUI();log('영업 시작! 손님 주문을 보고 메뉴를 눌러 조리하세요.');
+  clearInterval(timer);timer=setInterval(tick,100);draw();
+}
+
+function order(i){
+  if(!G||G.cook[i]>0||G.ready[i]>=3)return;
+  const m=M[i];if(S.money<m.c){log('재료값이 모자라요');return}
+  S.money-=m.c;G.cost+=m.c;G.cook[i]=m.t/(1+.25*S.fire);draw();
+}
+
+function serve(i){
+  if(!G)return;const c=G.seats[i];if(!c)return;
+  const k=c.need.findIndex(x=>G.ready[x]>0);
+  if(k<0){log('손님이 원하는 메뉴가 아직 안 나왔어요');return}
+  const x=c.need.splice(k,1)[0];G.ready[x]--;S.money+=M[x].p;G.rev+=M[x].p;
+  if(!c.need.length){const tip=c.pat>.5?1000:0;S.money+=tip;G.rev+=tip;G.served++;G.seats[i]=null;log(tip?'😋 잘 먹었다! 팁 1,000원':'😋 잘 먹었다!')}
+  draw();
+}
+
+function tick(){
+  const dt=.1;G.t+=dt;
+  M.forEach((m,i)=>{if(G.cook[i]>0){G.cook[i]-=dt;if(G.cook[i]<=0){G.cook[i]=0;G.ready[i]++}}});
+  G.next-=dt;
+  if(G.next<=0){
+    const free=G.seats.map((s,i)=>s?-1:i).filter(i=>i>=0);
+    if(free.length){
+      const need=[];for(let k=0;k<1+(Math.random()<.4);k++)need.push(Math.random()*M.length|0);
+      G.seats[free[Math.random()*free.length|0]]={id:++G.id,e:FACE[Math.random()*FACE.length|0],need,pat:1,rate:1/(28+Math.random()*10)};
+    }
+    const h=hour(),peak=(h>=23||h<2)?.6:1;
+    G.next=(4+Math.random()*4)*peak*(1-.12*S.sign);
+  }
+  G.seats.forEach((c,i)=>{if(!c)return;c.pat-=c.rate*dt;if(c.pat<=0){G.lost++;G.seats[i]=null;log('😠 기다리다 화난 손님이 가버렸어요')}});
+  if(G.t>=G.len)return endNight();
+  draw();
+}
+
+function draw(){
+  const h=hour();$('#day').textContent=S.day;$('#clk').textContent=pad(Math.floor(h))+':'+pad(Math.floor(h%1*60));$('#money').textContent=won(S.money);
+  [...$('#seats').children].forEach((d,i)=>{
+    const c=G.seats[i];
+    if(!c){if(d.dataset.k!=='e'){d.className='seat empty';d.innerHTML='빈 자리';d.dataset.k='e'}return}
+    const k=c.id+':'+c.need.join();
+    if(d.dataset.k!==k){d.className='seat';d.dataset.k=k;d.innerHTML=`<div class="face">${c.e}</div><div class="need">${c.need.map(x=>`<span>${M[x].e} ${M[x].n}</span>`).join('')}</div><div class="bar"><i></i></div>`}
+    const b=d.querySelector('.bar i');b.style.width=Math.max(0,c.pat*100)+'%';b.style.background=c.pat>.5?'var(--ok)':c.pat>.25?'var(--bulb)':'var(--bad)';
+  });
+  M.forEach((m,i)=>{$('#r'+i).textContent=G.ready[i];$('#c'+i).style.width=G.cook[i]>0?(1-G.cook[i]/(m.t/(1+.25*S.fire)))*100+'%':'0'});
+}
+
+function endNight(){
+  clearInterval(timer);S.money-=RENT;
+  const profit=G.rev-G.cost-RENT;
+  const sum=`<p>매출 ${won(G.rev)}원 · 재료비 ${won(G.cost)}원 · 자릿세 ${won(RENT)}원</p><p>서빙 ${G.served}팀 · 놓친 손님 ${G.lost}팀</p><p><b>오늘 손익 ${profit<0?'-':'+'}${won(Math.abs(profit))}원</b> · 잔고 ${won(S.money)}원</p>`;
+  if(S.money<0){
+    $('#card').innerHTML=`<h3>폐업</h3>${sum}<p>잔고가 바닥났어요. 처음부터 다시 시작할 수 있어요.</p><button id="rs">다시 시작</button>`;
+    $('#rs').onclick=()=>{S={day:1,money:30000,fire:0,sign:0};startNight()};
+  }else shop(sum);
+  $('#ov').hidden=false;
+}
+
+function shop(sum){
+  const fc=20000*(S.fire+1),sc=25000*(S.sign+1);
+  $('#card').innerHTML=`<h3>${S.day}일차 마감</h3>${sum}
+  <button class="alt" id="bf" ${S.fire>=3||S.money<fc?'disabled':''}>🔥 화력 강화 (조리 25% 빠르게) Lv${S.fire}/3 ${S.fire>=3?'':'– '+won(fc)+'원'}</button>
+  <button class="alt" id="bs" ${S.sign>=3||S.money<sc?'disabled':''}>🏮 간판 등 달기 (손님 더 자주) Lv${S.sign}/3 ${S.sign>=3?'':'– '+won(sc)+'원'}</button>
+  <button id="nx">다음 날 영업 시작</button>`;
+  $('#bf').onclick=()=>{S.money-=fc;S.fire++;shop(sum)};
+  $('#bs').onclick=()=>{S.money-=sc;S.sign++;shop(sum)};
+  $('#nx').onclick=()=>{S.day++;startNight()};
+}
+
+buildUI();
+G={t:0,len:180,seats:[null,null,null,null],cook:M.map(()=>0),ready:M.map(()=>0)};draw();
+$('#card').innerHTML=`<h3>🏮 밤포차</h3><p>밤 8시부터 새벽 5시까지 포장마차를 운영하세요.</p><p>① 손님 주문을 확인하고 메뉴를 눌러 조리 ② 준비되면 손님을 눌러 서빙. 오래 기다리면 손님이 떠나요. 마감 때 자릿세 ${won(RENT)}원이 나가요.</p><button id="go">영업 시작</button>`;
+$('#go').onclick=startNight;
+</script>
+</body>
+</html>
